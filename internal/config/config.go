@@ -26,8 +26,9 @@ const (
 
 // Fields stored in the config file.
 const (
-	KeyEndpoint = "endpoint"
-	KeyOutput   = "output"
+	KeyEndpoint  = "endpoint"
+	KeyOutput    = "output"
+	KeyVerbosity = "verbosity"
 )
 
 // Dir returns the config directory: $MPX_CONFIG_DIR if set, else ~/.mpx.

@@ -16,6 +16,11 @@ import (
 // EU endpoint eu.api.mathpix.com or a private deployment.
 const DefaultEndpoint = "https://api.mathpix.com"
 
+const (
+	VerbosityNormal = "normal"
+	VerbosityQuiet  = "quiet"
+)
+
 // ExitError carries a specific process exit code out of a command that ran to completion, such as a
 // folder convert where some files failed. The root maps it to the process status.
 type ExitError struct {
@@ -27,20 +32,23 @@ func (e *ExitError) Error() string { return e.Message }
 
 // Flags are the persistent flags declared on the root command, before resolution.
 type Flags struct {
-	Profile  string
-	AppID    string
-	AppKey   string
-	Endpoint string
-	Output   string
+	Profile   string
+	AppID     string
+	AppKey    string
+	Endpoint  string
+	Output    string
+	Verbosity string
+	Quiet     bool
 }
 
 // Global is the resolved configuration handed to service commands, plus the streams to write to.
 type Global struct {
-	Profile  string
-	AppID    string
-	AppKey   string
-	Endpoint string
-	Output   string
+	Profile   string
+	AppID     string
+	AppKey    string
+	Endpoint  string
+	Output    string
+	Verbosity string
 
 	Out io.Writer
 	Err io.Writer
@@ -55,16 +63,25 @@ func Resolve(f Flags, out, errOut io.Writer) (*Global, error) {
 	if err != nil {
 		return nil, err
 	}
+	verbosity := first(f.Verbosity, os.Getenv("MPX_VERBOSITY"), p.Setting(config.KeyVerbosity), VerbosityNormal)
+	if f.Quiet {
+		verbosity = VerbosityQuiet
+	}
 	g := &Global{
-		Profile:  profile,
-		AppID:    first(f.AppID, os.Getenv("MATHPIX_APP_ID"), p.Cred(config.KeyAppID)),
-		AppKey:   first(f.AppKey, os.Getenv("MATHPIX_APP_KEY"), p.Cred(config.KeyAppKey)),
-		Endpoint: first(f.Endpoint, os.Getenv("MPX_ENDPOINT"), p.Setting(config.KeyEndpoint), DefaultEndpoint),
-		Output:   first(f.Output, os.Getenv("MPX_OUTPUT"), p.Setting(config.KeyOutput), "text"),
-		Out:      out,
-		Err:      errOut,
+		Profile:   profile,
+		AppID:     first(f.AppID, os.Getenv("MATHPIX_APP_ID"), p.Cred(config.KeyAppID)),
+		AppKey:    first(f.AppKey, os.Getenv("MATHPIX_APP_KEY"), p.Cred(config.KeyAppKey)),
+		Endpoint:  first(f.Endpoint, os.Getenv("MPX_ENDPOINT"), p.Setting(config.KeyEndpoint), DefaultEndpoint),
+		Output:    first(f.Output, os.Getenv("MPX_OUTPUT"), p.Setting(config.KeyOutput), "text"),
+		Verbosity: verbosity,
+		Out:       out,
+		Err:       errOut,
 	}
 	return g, nil
+}
+
+func (g *Global) ShowProgress() bool {
+	return g.Verbosity != VerbosityQuiet && isTerminal(g.Err)
 }
 
 // RequireCredentials returns an actionable error when app_id/app_key are missing, naming every way
@@ -83,4 +100,16 @@ func first(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }

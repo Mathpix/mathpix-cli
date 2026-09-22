@@ -61,6 +61,8 @@ variables, or --app-id / --app-key.`,
 	root.PersistentFlags().StringVar(&flags.AppKey, "app-key", "", "Mathpix app_key (or MATHPIX_APP_KEY; prefer the variable over shell history)")
 	root.PersistentFlags().StringVar(&flags.Endpoint, "endpoint", "", "API base URL (or MPX_ENDPOINT; default "+cli.DefaultEndpoint+")")
 	root.PersistentFlags().StringVar(&flags.Output, "output", "", "output format for status: text or json (or MPX_OUTPUT)")
+	root.PersistentFlags().StringVar(&flags.Verbosity, "verbosity", "", "progress output: normal or quiet (or MPX_VERBOSITY; default \"normal\")")
+	root.PersistentFlags().BoolVarP(&flags.Quiet, "quiet", "q", false, "hide the progress indicator (shorthand for --verbosity quiet)")
 
 	// Services. Add a product here; nothing else in the root changes.
 	root.AddCommand(scs.Command(flags))

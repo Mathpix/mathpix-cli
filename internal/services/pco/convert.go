@@ -43,7 +43,7 @@ folder (s3://, gs:// or an Azure blob URL) becomes a server-side job over the de
 storage; DST is not used and the outputs land in your bucket.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, c, err := client(cmd, flags, t)
+			g, c, err := client(cmd, flags, t)
 			if err != nil {
 				return err
 			}
@@ -65,7 +65,7 @@ storage; DST is not used and the outputs land in your bucket.`,
 			if len(args) == 2 {
 				dst = args[1]
 			}
-			engine := &pcoEngine{client: c, options: options, formats: formats}
+			engine := &pcoEngine{client: c, options: options, formats: formats, showProgress: g.ShowProgress()}
 			if isDir(src) {
 				return engine.runFolder(cmd, src, dst, concurrency)
 			}
@@ -79,9 +79,11 @@ storage; DST is not used and the outputs land in your bucket.`,
 }
 
 type pcoEngine struct {
-	client  *pcoapi.Client
-	options map[string]any
-	formats []string
+	client       *pcoapi.Client
+	options      map[string]any
+	formats      []string
+	showProgress bool
+	onProgress   func(percent float64, detail string)
 }
 
 // extensions returns the download extensions for one document: the always-generated ones plus the
@@ -142,6 +144,19 @@ func (e *pcoEngine) convertOne(ctx context.Context, path, outputBase string) ([]
 	return written, nil
 }
 
+func pcoProgress(percent float64, done, total int) (float64, string) {
+	if percent <= 0 && total > 0 {
+		percent = float64(done) / float64(total) * 100
+	}
+	if total > 0 {
+		return percent, fmt.Sprintf("%d/%d pages", done, total)
+	}
+	if percent > 0 {
+		return percent, ""
+	}
+	return -1, ""
+}
+
 func (e *pcoEngine) poll(ctx context.Context, id string) error {
 	delay := time.Second
 	for {
@@ -154,6 +169,9 @@ func (e *pcoEngine) poll(ctx context.Context, id string) error {
 				return fmt.Errorf("processing failed: %s", s.ErrorInfo.Message)
 			}
 			return fmt.Errorf("processing failed")
+		}
+		if e.onProgress != nil {
+			e.onProgress(pcoProgress(s.PercentDone, s.NumPagesCompleted, s.NumPages))
 		}
 		if s.Terminal() {
 			return nil
@@ -199,7 +217,11 @@ func (e *pcoEngine) runSingle(cmd *cobra.Command, src, dst string) error {
 	if dst != "" {
 		base = trimKnownExt(dst)
 	}
+	ind := progress.NewIndicator(cmd.ErrOrStderr(), e.showProgress)
+	ind.Start("converting " + filepath.Base(src))
+	e.onProgress = ind.Set
 	outputs, err := e.convertOne(cmd.Context(), src, base)
+	ind.Stop()
 	if err != nil {
 		return err
 	}
