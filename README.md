@@ -33,7 +33,7 @@ and managed with `mpx scs webhooks`.
 ## Install
 
 ```bash
-curl -fsSL https://mathpix.com/install.sh | sh
+curl -fsSL https://mathpix.com/mpx-cli/install.sh | sh
 ```
 
 The script detects your OS and CPU, downloads the matching release, verifies its checksum, installs
