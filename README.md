@@ -88,6 +88,92 @@ Any API option without a dedicated flag is reachable with `--options-json`:
 mpx scs convert paper.pdf paper.mmd --options-json '{"rm_fonts": true, "include_chemistry": true}'
 ```
 
+**Large files and bucket output (`--async`).** `--async` sends a single file through the Files API
+(`/files/v1`) instead of `/v3/pdf`, for large documents or to write outputs straight to your bucket:
+
+```bash
+mpx scs convert big.pdf big.mmd --async
+mpx scs convert s3://acme-docs/in/report.pdf report.mmd --async --destination s3://acme-docs/out/
+```
+
+**Webhooks.** Get notified when a document finishes, on any convert (sync or `--async`):
+
+```bash
+mpx scs convert paper.pdf paper.mmd \
+  --webhook-url https://hooks.example.com/mathpix \
+  --webhook-event file.completed --webhook-event file.error \
+  --webhook-header 'Authorization=Bearer TOKEN'
+```
+
+## The rest of `mpx scs`
+
+```bash
+mpx scs text equation.png                       # OCR one image synchronously; prints the JSON result
+mpx scs get PDF_ID                              # a document's processing status (--output json for the raw object)
+mpx scs download PDF_ID docx -o paper.docx      # fetch one format of a document you already submitted
+mpx scs delete PDF_ID                           # permanently delete a document's outputs and input
+```
+
+**Batch jobs (Files API).** Convert many documents in one call:
+
+```bash
+mpx scs jobs create --uri s3://acme-docs/a.pdf --uri s3://acme-docs/b.pdf --formats docx
+mpx scs jobs list
+mpx scs jobs get JOB_ID
+mpx scs jobs files JOB_ID --status error
+mpx scs jobs finalize JOB_ID                    # close to new files so job.completed can fire
+```
+
+**Data sources.** Register a bucket so the Files API can read from (and write to) it:
+
+```bash
+mpx scs data-sources identities                 # Mathpix's grant identities + your external_id, for the bucket's trust policy
+mpx scs data-sources register --config '{"provider":"s3","bucket":"acme-docs","region":"us-east-1","role_arn":"arn:aws:iam::..."}'
+mpx scs data-sources list
+mpx scs data-sources test ID
+mpx scs data-sources delete ID
+```
+
+**Webhook signing secret.** Deliveries are signed; manage the secret you verify them against:
+
+```bash
+mpx scs webhooks config                         # show (creating on first call) the signing secret
+mpx scs webhooks rotate-secret [--force]
+mpx scs webhooks test https://hooks.example.com/mathpix   # send one signed test delivery
+```
+
+**Account.**
+
+```bash
+mpx scs app-token [--expires 300] [--strokes]   # mint a short-lived client token for direct v3/text calls
+mpx scs results [--pdf]                          # past image results, or document results with --pdf
+mpx scs usage --timespan day --group-by usage_type   # aggregated usage for billing
+```
+
+## The `pco` service (Private Cloud OCR)
+
+`pco` drives a Mathpix Private Cloud OCR deployment. It speaks the same document API as `scs` plus
+the deployment-only endpoints. Point `--endpoint` at your deployment; a deployment usually needs no
+credentials, pass `--token` or the client-certificate flags if your ingress requires them.
+
+```bash
+mpx pco --endpoint http://pco.internal:8080 convert paper.pdf paper.mmd --formats docx
+mpx pco --endpoint http://pco.internal:8080 convert s3://acme-docs/scans/ --formats md   # a folder job in your bucket
+mpx pco --endpoint http://pco.internal:8080 text equation.png
+mpx pco --endpoint http://pco.internal:8080 status                 # versions, workers, license, metering
+mpx pco --endpoint http://pco.internal:8080 usage --from 2026-09-01 --to 2026-09-30
+mpx pco --endpoint http://pco.internal:8080 jobs list
+mpx pco --endpoint http://pco.internal:8080 jobs get JOB_ID
+mpx pco --endpoint http://pco.internal:8080 jobs retry JOB_ID
+mpx pco --endpoint http://pco.internal:8080 jobs cancel JOB_ID
+```
+
+Transport flags on the `pco` service: `--token` (bearer), `--ca-cert`, `--client-cert`,
+`--client-key`, `--insecure`. `--endpoint` can be set once with `mpx configure` (or `MPX_ENDPOINT`).
+
+Every command has `--help`. Run `mpx <service> --help` and `mpx <service> <command> --help` for the
+full list of flags.
+
 ## License
 
 MIT. See `LICENSE`.
