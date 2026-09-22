@@ -11,7 +11,7 @@ mpx configure                                  # store your app_id and app_key
 mpx scs convert paper.pdf paper.mmd            # one document
 mpx scs convert paper.pdf paper.docx           # request a conversion format
 mpx scs convert ./in/ ./out/ --map pdf:docx,md:docx   # a folder
-mpx scs convert big.pdf big.mmd --async        # via the Files API (large files, bucket output)
+mpx scs convert report.pdf report.mmd --async --destination s3://acme-docs/out/   # Files API, output to your bucket
 mpx scs convert equation.png equation.mmd      # an image (goes through /v3/text)
 mpx scs jobs list                              # Files API batch jobs
 mpx scs data-sources list                      # buckets registered for the Files API
@@ -80,13 +80,17 @@ Any API option without a dedicated flag is reachable with `--options-json`:
 mpx scs convert paper.pdf paper.mmd --options-json '{"rm_fonts": true, "include_chemistry": true}'
 ```
 
-**Large files and bucket output (`--async`).** `--async` sends a single file through the Files API
-(`/files/v1`) instead of `/v3/pdf`, for large documents or to write outputs straight to your bucket:
+**Bucket output and the Files API (`--async`).** `--async` submits through the Files API
+(`/files/v1`) instead of `/v3/pdf`. Use it to write results straight to your own bucket with
+`--destination`, or to submit from a registered data source:
 
 ```bash
-mpx scs convert big.pdf big.mmd --async
-mpx scs convert s3://acme-docs/in/report.pdf report.mmd --async --destination s3://acme-docs/out/
+mpx scs convert report.pdf report.mmd --async --destination s3://acme-docs/out/
+mpx scs convert s3://acme-docs/in/report.pdf report.mmd --async
 ```
+
+For many documents at once, use `mpx scs jobs` (the Files API batch endpoint, up to 200,000 in one
+call). To convert a local folder, plain `convert` on a directory already runs in parallel.
 
 **Webhooks.** Get notified when a document finishes, on any convert (sync or `--async`):
 
