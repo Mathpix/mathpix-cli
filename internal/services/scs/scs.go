@@ -35,6 +35,12 @@ OCR a single image, and manage the documents you have submitted.
 		newGetCmd(flags),
 		newDownloadCmd(flags),
 		newDeleteCmd(flags),
+		newJobsCmd(flags),
+		newDataSourcesCmd(flags),
+		newAppTokenCmd(flags),
+		newResultsCmd(flags),
+		newUsageCmd(flags),
+		newWebhooksCmd(flags),
 	)
 	return scs
 }

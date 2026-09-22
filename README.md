@@ -1,18 +1,34 @@
 # mpx — the Mathpix command-line interface
 
 `mpx` is the Mathpix CLI, organized as `mpx <service> <command>` the way the AWS CLI is. Each
-Mathpix product is a service; its operations are the commands under it. The first service is `scs`,
-the Mathpix OCR / document API on api.mathpix.com.
+Mathpix product is a service; its operations are the commands under it. Two services ship today:
+
+- **`scs`** — the Mathpix OCR / document API on api.mathpix.com (sync `/v3` and the async Files API).
+- **`pco`** — a Mathpix Private Cloud OCR deployment in your own infrastructure.
 
 ```bash
 mpx configure                                  # store your app_id and app_key
 mpx scs convert paper.pdf paper.mmd            # one document
 mpx scs convert paper.pdf paper.docx           # request a conversion format
 mpx scs convert ./in/ ./out/ --map pdf:docx,md:docx   # a folder
+mpx scs convert big.pdf big.mmd --async        # via the Files API (large files, bucket output)
 mpx scs text equation.png                      # one image, synchronous
+mpx scs jobs list                              # Files API batch jobs
+mpx scs data-sources list                      # buckets registered for the Files API
+mpx scs app-token                              # mint a short-lived client token
+mpx scs results --pdf                          # past results
+mpx scs usage --timespan day                   # usage for billing
 mpx scs get PDF_ID                             # processing status
 mpx scs download PDF_ID docx -o paper.docx     # fetch one format later
+
+mpx pco --endpoint http://pco.internal:8080 convert paper.pdf paper.mmd   # a deployment
+mpx pco --endpoint http://pco.internal:8080 status
+mpx pco --endpoint http://pco.internal:8080 jobs list
 ```
+
+Run `mpx <service> --help` and `mpx <service> <command> --help` for the full list of commands and
+options. Webhooks are set per convert with `--webhook-url`, `--webhook-event` and `--webhook-header`,
+and managed with `mpx scs webhooks`.
 
 ## Install
 

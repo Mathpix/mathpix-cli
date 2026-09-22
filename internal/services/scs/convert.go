@@ -1,10 +1,13 @@
 package scs
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -14,13 +17,33 @@ import (
 	"github.com/mathpix/mathpix-cli/internal/scsapi"
 )
 
+// sleepCtx waits d, or returns early if the context is cancelled.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 type convertFlags struct {
-	mapValue    string
-	concurrency int
-	pageRanges  string
-	rmSpaces    bool
-	eqTags      bool
-	optionsJSON string
+	mapValue       string
+	concurrency    int
+	pageRanges     string
+	rmSpaces       bool
+	eqTags         bool
+	optionsJSON    string
+	async          bool
+	destination    string
+	webhookURL     string
+	webhookEvents  []string
+	webhookHeaders []string
 }
 
 func newConvertCmd(flags *cli.Flags) *cobra.Command {
@@ -53,6 +76,9 @@ Any API option without a dedicated flag is reachable through --options-json, e.g
 				return err
 			}
 			src, dst := args[0], args[1]
+			if cf.async {
+				return runAsyncSingle(cmd, client, cf, options, src, dst)
+			}
 			if isExistingDir(src) {
 				return runFolder(cmd, g, client, cf, options, src, dst)
 			}
@@ -65,6 +91,11 @@ Any API option without a dedicated flag is reachable through --options-json, e.g
 	cmd.Flags().BoolVar(&cf.rmSpaces, "rm-spaces", false, "remove extra spaces from text lines")
 	cmd.Flags().BoolVar(&cf.eqTags, "include-equation-tags", false, "keep equation numbers from the source")
 	cmd.Flags().StringVar(&cf.optionsJSON, "options-json", "", "extra API options as a JSON object, merged over the flags")
+	cmd.Flags().BoolVar(&cf.async, "async", false, "send a single file through the Files API (/files/v1) instead of /v3/pdf")
+	cmd.Flags().StringVar(&cf.destination, "destination", "", "Files API only (--async): write outputs to this bucket URI (destination_uri)")
+	cmd.Flags().StringVar(&cf.webhookURL, "webhook-url", "", "notify this URL when done (callback_url); works with and without --async")
+	cmd.Flags().StringArrayVar(&cf.webhookEvents, "webhook-event", nil, "webhook events, e.g. file.completed (repeatable; callback_events)")
+	cmd.Flags().StringArrayVar(&cf.webhookHeaders, "webhook-header", nil, "header to send with the webhook, key=value (repeatable; callback_headers)")
 	return cmd
 }
 
@@ -79,10 +110,149 @@ func (cf *convertFlags) options() (map[string]any, error) {
 	if cf.eqTags {
 		options["include_equation_tags"] = true
 	}
+	if cf.webhookURL != "" {
+		options["callback_url"] = cf.webhookURL
+		if len(cf.webhookEvents) > 0 {
+			options["callback_events"] = cf.webhookEvents
+		}
+		if len(cf.webhookHeaders) > 0 {
+			headers := map[string]string{}
+			for _, h := range cf.webhookHeaders {
+				k, v, ok := strings.Cut(h, "=")
+				if !ok {
+					return nil, fmt.Errorf("bad --webhook-header %q, expected key=value", h)
+				}
+				headers[k] = v
+			}
+			options["callback_headers"] = headers
+		}
+	}
 	if err := mergeOptionsJSON(options, cf.optionsJSON); err != nil {
 		return nil, err
 	}
 	return options, nil
+}
+
+// runAsyncSingle converts one file through the Files API (/files/v1). A local file is uploaded, a
+// URL or bucket URI is submitted by reference; then it polls the file's status and downloads the
+// requested format.
+func runAsyncSingle(cmd *cobra.Command, client *scsapi.Client, cf *convertFlags, options map[string]any, src, dst string) error {
+	if isExistingDir(src) {
+		return fmt.Errorf("--async converts a single file; use `mpx scs jobs` for a folder or batch")
+	}
+	format := scsapi.FormatOfFile(dst)
+	if format == "" {
+		return fmt.Errorf("cannot tell the output format from %q; end it with a known extension such as .mmd, .docx", dst)
+	}
+	if field := scsapi.ConversionFormatsField([]string{format}); len(field) > 0 {
+		options["conversion_formats"] = field
+	}
+	if cf.destination != "" {
+		options["destination_uri"] = cf.destination
+	}
+	fileID, err := submitAsync(cmd, client, options, src)
+	if err != nil {
+		return err
+	}
+	if err := pollFile(cmd, client, fileID); err != nil {
+		return err
+	}
+	out := strings.TrimSuffix(dst, "."+format)
+	target := out + "." + format
+	if err := downloadFile(cmd, client, fileID, format, target); err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), target)
+	return nil
+}
+
+func submitAsync(cmd *cobra.Command, client *scsapi.Client, options map[string]any, src string) (string, error) {
+	var raw []byte
+	var err error
+	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "s3://") || strings.HasPrefix(src, "gs://") {
+		body := map[string]any{"source_uri": src}
+		for k, v := range options {
+			body[k] = v
+		}
+		raw, err = client.FilesSubmitURI(cmd.Context(), body)
+	} else {
+		f, openErr := os.Open(src)
+		if openErr != nil {
+			return "", openErr
+		}
+		raw, err = client.FilesSubmitUpload(cmd.Context(), f, filepath.Base(src), options)
+		f.Close()
+	}
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		FileID string `json:"file_id"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil || out.FileID == "" {
+		return "", fmt.Errorf("unexpected submit response: %s", string(raw))
+	}
+	return out.FileID, nil
+}
+
+func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string) error {
+	delay := time.Second
+	for {
+		raw, err := client.FilesStatus(cmd.Context(), fileID)
+		if err != nil {
+			return err
+		}
+		var s struct {
+			Status    string `json:"status"`
+			Error     string `json:"error"`
+			ErrorInfo *struct {
+				Message string `json:"message"`
+			} `json:"error_info"`
+		}
+		json.Unmarshal(raw, &s)
+		if s.Status == "error" {
+			if s.ErrorInfo != nil && s.ErrorInfo.Message != "" {
+				return fmt.Errorf("processing failed: %s", s.ErrorInfo.Message)
+			}
+			return fmt.Errorf("processing failed: %s", s.Error)
+		}
+		if s.Status == "completed" {
+			return nil
+		}
+		if err := sleepCtx(cmd.Context(), delay); err != nil {
+			return err
+		}
+		if delay < 10*time.Second {
+			delay *= 2
+		}
+	}
+}
+
+func downloadFile(cmd *cobra.Command, client *scsapi.Client, fileID, ext, target string) error {
+	part := target + ".part"
+	for {
+		f, err := os.Create(part)
+		if err != nil {
+			return err
+		}
+		pending, retryAfter, err := client.FilesDownload(cmd.Context(), fileID, ext, f)
+		f.Close()
+		if err != nil {
+			os.Remove(part)
+			return err
+		}
+		if pending {
+			os.Remove(part)
+			if retryAfter > 10*time.Second {
+				retryAfter = 10 * time.Second
+			}
+			if err := sleepCtx(cmd.Context(), retryAfter); err != nil {
+				return err
+			}
+			continue
+		}
+		return os.Rename(part, target)
+	}
 }
 
 func runSingle(cmd *cobra.Command, client *scsapi.Client, cf *convertFlags, options map[string]any, src, dst string) error {

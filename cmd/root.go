@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mathpix/mathpix-cli/internal/cli"
+	"github.com/mathpix/mathpix-cli/internal/services/pco"
 	"github.com/mathpix/mathpix-cli/internal/services/scs"
 )
 
@@ -63,6 +64,7 @@ variables, or --app-id / --app-key.`,
 
 	// Services. Add a product here; nothing else in the root changes.
 	root.AddCommand(scs.Command(flags))
+	root.AddCommand(pco.Command(flags))
 
 	root.AddCommand(newConfigureCmd(flags), newVersionCmd())
 	return root
