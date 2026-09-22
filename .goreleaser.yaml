@@ -48,4 +48,4 @@ brews:
       bin.install "mpx"
 
 release:
-  draft: true
+  draft: false
