@@ -33,8 +33,12 @@ checksum:
 # then the install script and the archives are unsigned, and macOS users clear the quarantine flag.
 # signs / notarize go here.
 
+# Homebrew: builds the formula but does not push it yet. To enable `brew install mathpix/tap/mpx`,
+# create the Mathpix/homebrew-tap repo, give the release workflow a token that can push to it, and
+# set skip_upload to false.
 brews:
   - name: mpx
+    skip_upload: 'true'
     repository:
       owner: Mathpix
       name: homebrew-tap

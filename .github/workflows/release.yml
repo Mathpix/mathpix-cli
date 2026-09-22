@@ -1,0 +1,58 @@
+name: release
+
+# Cut a release by pushing a semver tag from master:
+#   git tag -a v0.1.0 -m "mpx v0.1.0" && git push origin v0.1.0
+# The guards below refuse a tag that is malformed, not on master, or not newer than the last one,
+# so a mistaken or out-of-order tag fails before anything is published.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate the tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          echo "Releasing tag: $tag"
+          if ! echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::Tag '$tag' is not vX.Y.Z (optionally -prerelease). Not releasing."
+            exit 1
+          fi
+          if ! git branch -r --contains "$tag" | grep -q 'origin/master'; then
+            echo "::error::Tag '$tag' is not on master. Release only from master."
+            exit 1
+          fi
+          prev=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${tag}$" | head -1)
+          if [ -n "$prev" ]; then
+            newest=$(printf '%s\n%s\n' "$prev" "$tag" | sort -V | tail -1)
+            if [ "$newest" != "$tag" ]; then
+              echo "::error::Tag '$tag' is not newer than the last release '$prev'. Tags must go in order."
+              exit 1
+            fi
+            echo "Previous release: $prev"
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Test
+        run: go test ./...
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
