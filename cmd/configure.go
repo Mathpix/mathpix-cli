@@ -11,7 +11,7 @@ import (
 	"github.com/mathpix/mathpix-cli/internal/config"
 )
 
-// newConfigureCmd implements `mpx configure`, the AWS-CLI-style interactive setup: it prompts for
+// newConfigureCmd implements `mpx configure`, the interactive setup: it prompts for
 // the credentials and settings of a profile and writes them to ~/.mpx/credentials and ~/.mpx/config.
 // Pressing Enter keeps the current value. Secrets go only into the credentials file (0600).
 func newConfigureCmd(flags *cli.Flags) *cobra.Command {

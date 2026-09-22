@@ -45,8 +45,8 @@ func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "mpx",
 		Short: "The Mathpix command-line interface",
-		Long: `mpx is the Mathpix command-line interface, organized as ` + "`mpx <service> <command>`" + ` the way the
-AWS CLI is. Each Mathpix product is a service; its operations are the commands under it.
+		Long: `mpx is the Mathpix command-line interface, organized as ` + "`mpx <service> <command>`" + `: each
+Mathpix product is a service; its operations are the commands under it.
 
   mpx scs convert paper.pdf paper.mmd     convert one document
   mpx scs convert ./in/ ./out/ --map pdf:docx    convert a folder

@@ -1,6 +1,6 @@
 # mpx — the Mathpix command-line interface
 
-`mpx` is the Mathpix CLI, organized as `mpx <service> <command>` the way the AWS CLI is. Each
+`mpx` is the Mathpix CLI, organized as `mpx <service> <command>`: each
 Mathpix product is a service; its operations are the commands under it. Two services ship today:
 
 - **`scs`** — the Mathpix OCR / document API on api.mathpix.com (sync `/v3` and the async Files API).
@@ -54,7 +54,7 @@ brew install mathpix/tap/mpx
 
 ## Configuration
 
-`mpx` reads credentials and settings the way the AWS CLI does: two INI files with named profiles.
+`mpx` reads credentials and settings from two INI files with named profiles.
 
 - `mpx configure` prompts for your `app_id`, `app_key`, endpoint and default output, and writes them
   to `~/.mpx/credentials` (secrets, 0600) and `~/.mpx/config`.

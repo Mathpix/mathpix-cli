@@ -1,6 +1,6 @@
-// Command mpx is the Mathpix command-line interface. It is organized as `mpx <service> <command>`,
-// the way the AWS CLI is: each Mathpix product is a service, and its operations are the commands
-// under it. Today the only service is `scs`, the Mathpix OCR / document API on api.mathpix.com.
+// Command mpx is the Mathpix command-line interface. It is organized as `mpx <service> <command>`:
+// each Mathpix product is a service, and its operations are the commands under it. The services
+// today are `scs` (the Mathpix OCR / document API) and `pco` (a Private Cloud OCR deployment).
 package main
 
 import (

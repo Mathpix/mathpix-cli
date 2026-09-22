@@ -1,5 +1,5 @@
-// Package config reads and writes mpx credentials and settings the way the AWS CLI does: two
-// INI-style files under a config directory, each split into named profiles. Credentials
+// Package config reads and writes mpx credentials and settings as two INI-style files under a
+// config directory, each split into named profiles. Credentials
 // (app_id, app_key) live in `credentials`; everything else (endpoint, output format, ...) lives in
 // `config`. Nothing here decides precedence against flags or the environment; that is cli.Resolve's
 // job. This package only owns the files.
