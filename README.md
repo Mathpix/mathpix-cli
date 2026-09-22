@@ -48,8 +48,8 @@ Prefer a package manager? `brew install mathpix/tap/mpx` or `winget install Math
 
 `mpx` reads credentials and settings from two INI files with named profiles.
 
-- `mpx configure` prompts for your `app_id`, `app_key`, endpoint and default output, and writes them
-  to `~/.mpx/credentials` (secrets, 0600) and `~/.mpx/config`.
+- `mpx configure` prompts for your `app_id`, `app_key`, endpoint, default output and verbosity, and
+  writes them to `~/.mpx/credentials` (secrets, 0600) and `~/.mpx/config`.
 - `--profile NAME` (or `MPX_PROFILE`) selects a profile; anything not `default`.
 - Every value resolves flag first, then environment, then the profile file:
 
@@ -59,9 +59,20 @@ Prefer a package manager? `brew install mathpix/tap/mpx` or `winget install Math
 | app_key | `--app-key` | `MATHPIX_APP_KEY` | credentials |
 | endpoint | `--endpoint` | `MPX_ENDPOINT` | config |
 | output | `--output` | `MPX_OUTPUT` | config |
+| verbosity | `--verbosity` | `MPX_VERBOSITY` | config |
 
 The endpoint defaults to `https://api.mathpix.com`; point it at `https://eu.api.mathpix.com` for the
 EU region or at a private deployment.
+
+## Progress and verbosity
+
+A `convert` that submits a document and polls for the result shows a live progress indicator on the
+terminal: an animated spinner with a percent bar and page count as the pages are recognized. It is
+drawn only on a terminal, so redirected output and logs stay clean.
+
+`verbosity` is `normal` (the default, show the indicator) or `quiet` (hide it). Set it per command
+with `--quiet` (shorthand for `--verbosity quiet`) or `--verbosity quiet`, for the session with
+`MPX_VERBOSITY=quiet`, or permanently with `verbosity = quiet` in a profile (via `mpx configure`).
 
 ## `mpx scs convert`
 

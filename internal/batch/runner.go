@@ -22,6 +22,7 @@ type Engine struct {
 	Options     map[string]any // request options applied to every submission (rm_spaces, --options-json, ...)
 	PollInitial time.Duration
 	PollMax     time.Duration
+	OnProgress  func(percent float64, detail string)
 }
 
 // NewEngine builds an Engine with sane polling defaults.
@@ -255,6 +256,9 @@ func (e *Engine) pollDocument(ctx context.Context, id string) error {
 		if s.Status == "error" {
 			return fmt.Errorf("processing failed: %s", statusError(s))
 		}
+		if e.OnProgress != nil {
+			e.OnProgress(statusProgress(s))
+		}
 		if s.Terminal() {
 			return nil
 		}
@@ -360,6 +364,24 @@ func writeFile(path string, data []byte) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func statusProgress(s *scsapi.Status) (float64, string) {
+	pct := s.PercentDone
+	if pct <= 0 && s.NumPages > 0 {
+		pct = float64(s.NumPagesComplete) / float64(s.NumPages) * 100
+	}
+	if s.NumPages > 0 {
+		return pct, fmt.Sprintf("%d/%d pages", s.NumPagesComplete, s.NumPages)
+	}
+	return pctOrUnknown(pct), ""
+}
+
+func pctOrUnknown(pct float64) float64 {
+	if pct > 0 {
+		return pct
+	}
+	return -1
 }
 
 func statusError(s *scsapi.Status) string {

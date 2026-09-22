@@ -17,6 +17,19 @@ import (
 	"github.com/mathpix/mathpix-cli/internal/scsapi"
 )
 
+func pollProgress(percent float64, done, total int) (float64, string) {
+	if percent <= 0 && total > 0 {
+		percent = float64(done) / float64(total) * 100
+	}
+	if total > 0 {
+		return percent, fmt.Sprintf("%d/%d pages", done, total)
+	}
+	if percent > 0 {
+		return percent, ""
+	}
+	return -1, ""
+}
+
 // sleepCtx waits d, or returns early if the context is cancelled.
 func sleepCtx(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
@@ -78,12 +91,12 @@ Any API option without a dedicated flag is reachable through --options-json, e.g
 			}
 			src, dst := args[0], args[1]
 			if cf.async {
-				return runAsyncSingle(cmd, client, cf, options, src, dst)
+				return runAsyncSingle(cmd, g, client, cf, options, src, dst)
 			}
 			if isExistingDir(src) {
 				return runFolder(cmd, g, client, cf, options, src, dst)
 			}
-			return runSingle(cmd, client, cf, options, src, dst)
+			return runSingle(cmd, g, client, cf, options, src, dst)
 		},
 	}
 	cmd.Flags().StringVar(&cf.mapValue, "map", "", "folder mode: inputExt:format[+format] pairs, comma-separated (e.g. pdf:docx,md:docx)")
@@ -137,7 +150,7 @@ func (cf *convertFlags) options() (map[string]any, error) {
 // runAsyncSingle converts one file through the Files API (/files/v1). A local file is uploaded, a
 // URL or bucket URI is submitted by reference; then it polls the file's status and downloads the
 // requested format.
-func runAsyncSingle(cmd *cobra.Command, client *scsapi.Client, cf *convertFlags, options map[string]any, src, dst string) error {
+func runAsyncSingle(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf *convertFlags, options map[string]any, src, dst string) error {
 	if isExistingDir(src) {
 		return fmt.Errorf("--async converts a single file; use `mpx scs jobs` for a folder or batch")
 	}
@@ -151,13 +164,18 @@ func runAsyncSingle(cmd *cobra.Command, client *scsapi.Client, cf *convertFlags,
 	if cf.destination != "" {
 		options["destination_uri"] = cf.destination
 	}
+	ind := progress.NewIndicator(cmd.ErrOrStderr(), g.ShowProgress())
+	ind.Start("converting " + filepath.Base(src))
 	fileID, err := submitAsync(cmd, client, options, src)
 	if err != nil {
+		ind.Stop()
 		return err
 	}
-	if err := pollFile(cmd, client, fileID); err != nil {
+	if err := pollFile(cmd, client, fileID, ind); err != nil {
+		ind.Stop()
 		return err
 	}
+	ind.Stop()
 	out := strings.TrimSuffix(dst, "."+format)
 	target := out + "." + format
 	if err := downloadFile(cmd, client, fileID, format, target); err != nil {
@@ -196,7 +214,7 @@ func submitAsync(cmd *cobra.Command, client *scsapi.Client, options map[string]a
 	return out.FileID, nil
 }
 
-func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string) error {
+func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string, ind *progress.Indicator) error {
 	delay := time.Second
 	for {
 		raw, err := client.FilesStatus(cmd.Context(), fileID)
@@ -204,9 +222,12 @@ func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string) error {
 			return err
 		}
 		var s struct {
-			Status    string `json:"status"`
-			Error     string `json:"error"`
-			ErrorInfo *struct {
+			Status           string  `json:"status"`
+			NumPages         int     `json:"num_pages"`
+			NumPagesComplete int     `json:"num_pages_completed"`
+			PercentDone      float64 `json:"percent_done"`
+			Error            string  `json:"error"`
+			ErrorInfo        *struct {
 				Message string `json:"message"`
 			} `json:"error_info"`
 		}
@@ -217,6 +238,7 @@ func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string) error {
 			}
 			return fmt.Errorf("processing failed: %s", s.Error)
 		}
+		ind.Set(pollProgress(s.PercentDone, s.NumPagesComplete, s.NumPages))
 		if s.Status == "completed" {
 			return nil
 		}
@@ -256,7 +278,7 @@ func downloadFile(cmd *cobra.Command, client *scsapi.Client, fileID, ext, target
 	}
 }
 
-func runSingle(cmd *cobra.Command, client *scsapi.Client, cf *convertFlags, options map[string]any, src, dst string) error {
+func runSingle(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf *convertFlags, options map[string]any, src, dst string) error {
 	format := scsapi.FormatOfFile(dst)
 	if format == "" {
 		return fmt.Errorf("cannot tell the output format from %q; end it with a known extension such as .mmd, .docx, .tex.zip, .html", dst)
@@ -269,8 +291,12 @@ func runSingle(cmd *cobra.Command, client *scsapi.Client, cf *convertFlags, opti
 		Formats:    []string{format},
 		OutputBase: strings.TrimSuffix(dst, "."+format),
 	}
+	ind := progress.NewIndicator(cmd.ErrOrStderr(), g.ShowProgress())
+	ind.Start("converting " + item.Key)
 	engine := batch.NewEngine(client, options)
+	engine.OnProgress = ind.Set
 	outputs, err := engine.Convert(cmd.Context(), item)
+	ind.Stop()
 	if err != nil {
 		return err
 	}

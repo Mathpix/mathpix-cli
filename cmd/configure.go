@@ -37,8 +37,9 @@ settings to the config file. Use --profile to configure a profile other than "de
 			appKey := prompt(in, out, "Mathpix app_key", existing.Cred(config.KeyAppKey), true)
 			endpoint := prompt(in, out, "API endpoint", firstNonEmpty(existing.Setting(config.KeyEndpoint), cli.DefaultEndpoint), false)
 			output := prompt(in, out, "Default output (text/json)", firstNonEmpty(existing.Setting(config.KeyOutput), "text"), false)
+			verbosity := prompt(in, out, "Progress output (normal/quiet)", firstNonEmpty(existing.Setting(config.KeyVerbosity), cli.VerbosityNormal), false)
 			credentials := map[string]string{config.KeyAppID: appID, config.KeyAppKey: appKey}
-			settings := map[string]string{config.KeyEndpoint: endpoint, config.KeyOutput: output}
+			settings := map[string]string{config.KeyEndpoint: endpoint, config.KeyOutput: output, config.KeyVerbosity: verbosity}
 			if err := config.Save(profile, credentials, settings); err != nil {
 				return err
 			}
