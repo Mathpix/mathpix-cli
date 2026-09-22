@@ -44,7 +44,6 @@ Point --endpoint at your deployment. A deployment usually needs no credentials o
 	pco.PersistentFlags().BoolVar(&t.insecure, "insecure", false, "skip TLS certificate verification")
 	pco.AddCommand(
 		newConvertCmd(flags, t),
-		newTextCmd(flags, t),
 		newJobsCmd(flags, t),
 		newStatusCmd(flags, t),
 		newUsageCmd(flags, t),

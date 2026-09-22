@@ -57,6 +57,7 @@ Single file: DST's extension picks the output format.
   mpx scs convert paper.pdf paper.mmd
   mpx scs convert paper.pdf paper.docx
   mpx scs convert notes.md notes.docx        (Markdown source goes through /v3/converter)
+  mpx scs convert equation.png equation.mmd  (an image goes through /v3/text)
 
 Folder: SRC and DST are directories; --map says which input extensions to convert and to what.
   mpx scs convert ./in/ ./out/ --map pdf:docx,md:docx

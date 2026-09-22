@@ -97,6 +97,10 @@ func (e *pcoEngine) extensions() []string {
 }
 
 func (e *pcoEngine) convertOne(ctx context.Context, path, outputBase string) ([]string, error) {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	if imageInputExts[ext] && !strings.HasPrefix(path, "http") && allTextNative(e.extensions()) {
+		return e.convertImageOne(ctx, path, outputBase)
+	}
 	options := map[string]any{}
 	for k, v := range e.options {
 		options[k] = v

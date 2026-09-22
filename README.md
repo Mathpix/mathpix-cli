@@ -12,7 +12,7 @@ mpx scs convert paper.pdf paper.mmd            # one document
 mpx scs convert paper.pdf paper.docx           # request a conversion format
 mpx scs convert ./in/ ./out/ --map pdf:docx,md:docx   # a folder
 mpx scs convert big.pdf big.mmd --async        # via the Files API (large files, bucket output)
-mpx scs text equation.png                      # one image, synchronous
+mpx scs convert equation.png equation.mmd      # an image (goes through /v3/text)
 mpx scs jobs list                              # Files API batch jobs
 mpx scs data-sources list                      # buckets registered for the Files API
 mpx scs app-token                              # mint a short-lived client token
@@ -32,23 +32,15 @@ and managed with `mpx scs webhooks`.
 
 ## Install
 
-**Quick install (macOS, Linux):**
-
 ```bash
 curl -fsSL https://mathpix.com/install.sh | sh
 ```
 
-The script detects your OS and CPU, downloads the matching release, verifies its checksum, and puts
-`mpx` in `~/.local/bin`. Pin a version with `MPX_VERSION`, change the target with `MPX_INSTALL_DIR`.
+The script detects your OS and CPU, downloads the matching release, verifies its checksum, installs
+`mpx` to `~/.local/bin`, and puts it on your `PATH`. Override the location with `MPX_INSTALL_DIR`; pin
+a version with `MPX_VERSION`.
 
-**Homebrew:**
-
-```bash
-brew install mathpix/tap/mpx
-```
-
-**Direct download:** grab the archive for your platform from the releases page and put `mpx` on your
-`PATH`. On Windows, use the `.exe` from the releases page or `winget install Mathpix.mpx`.
+Prefer a package manager? `brew install mathpix/tap/mpx` or `winget install Mathpix.mpx`.
 
 `mpx` is one static binary. You do not need Python, Node, Java, or Docker.
 
@@ -108,7 +100,6 @@ mpx scs convert paper.pdf paper.mmd \
 ## The rest of `mpx scs`
 
 ```bash
-mpx scs text equation.png                       # OCR one image synchronously; prints the JSON result
 mpx scs get PDF_ID                              # a document's processing status (--output json for the raw object)
 mpx scs download PDF_ID docx -o paper.docx      # fetch one format of a document you already submitted
 mpx scs delete PDF_ID                           # permanently delete a document's outputs and input
@@ -159,7 +150,6 @@ credentials, pass `--token` or the client-certificate flags if your ingress requ
 ```bash
 mpx pco --endpoint http://pco.internal:8080 convert paper.pdf paper.mmd --formats docx
 mpx pco --endpoint http://pco.internal:8080 convert s3://acme-docs/scans/ --formats md   # a folder job in your bucket
-mpx pco --endpoint http://pco.internal:8080 text equation.png
 mpx pco --endpoint http://pco.internal:8080 status                 # versions, workers, license, metering
 mpx pco --endpoint http://pco.internal:8080 usage --from 2026-09-01 --to 2026-09-30
 mpx pco --endpoint http://pco.internal:8080 jobs list

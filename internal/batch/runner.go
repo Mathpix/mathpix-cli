@@ -2,9 +2,11 @@ package batch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,12 +29,102 @@ func NewEngine(client *scsapi.Client, options map[string]any) *Engine {
 	return &Engine{Client: client, Options: options, PollInitial: time.Second, PollMax: 10 * time.Second}
 }
 
-// Convert produces every requested format for one item and returns the paths written.
+// Convert produces every requested format for one item and returns the paths written. A Markdown
+// source converts through /v3/converter; a local image whose outputs are all text-style
+// (mmd/txt/html/tex/json) goes to /v3/text, the synchronous image endpoint; everything else, including
+// an image asked for a rich format like docx, goes to /v3/pdf.
 func (e *Engine) Convert(ctx context.Context, item Item) ([]string, error) {
 	if item.IsMMDInput() {
 		return e.convertMarkdown(ctx, item)
 	}
+	if imageInputExts[item.Ext] && !isURL(item.Path) && allTextNative(item.Formats) {
+		return e.convertImage(ctx, item)
+	}
 	return e.convertDocument(ctx, item)
+}
+
+// imageInputExts are single images the synchronous /v3/text endpoint can OCR.
+var imageInputExts = map[string]bool{
+	"png": true, "jpg": true, "jpeg": true, "tif": true, "tiff": true, "webp": true, "gif": true, "bmp": true,
+}
+
+// textField maps an output format to the /v3/text response field that holds it and the `formats` the
+// request must ask for. An empty field means "write the whole JSON result". ok is false for a format
+// /v3/text cannot produce (docx, pptx, the zip bundles), so those route to /v3/pdf instead.
+func textField(format string) (field string, request []string, ok bool) {
+	switch format {
+	case "mmd", "txt", "text":
+		return "text", []string{"text"}, true
+	case "html":
+		return "html", []string{"text", "html"}, true
+	case "tex", "latex":
+		return "latex_styled", []string{"text", "latex_styled"}, true
+	case "json", "lines.json":
+		return "", []string{"text", "data"}, true
+	}
+	return "", nil, false
+}
+
+func allTextNative(formats []string) bool {
+	for _, f := range formats {
+		if _, _, ok := textField(f); !ok {
+			return false
+		}
+	}
+	return len(formats) > 0
+}
+
+// convertImage OCRs one image through /v3/text and writes each requested text-style output.
+func (e *Engine) convertImage(ctx context.Context, item Item) ([]string, error) {
+	requested := map[string]bool{}
+	for _, f := range item.Formats {
+		_, req, _ := textField(f)
+		for _, r := range req {
+			requested[r] = true
+		}
+	}
+	options := map[string]any{}
+	for k, v := range e.Options {
+		options[k] = v
+	}
+	if len(requested) > 0 {
+		formats := make([]string, 0, len(requested))
+		for r := range requested {
+			formats = append(formats, r)
+		}
+		sort.Strings(formats)
+		options["formats"] = formats
+	}
+	f, err := os.Open(item.Path)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := e.Client.SubmitTextFile(ctx, f, filepath.Base(item.Path), options)
+	f.Close()
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	json.Unmarshal(raw, &result)
+	if err := os.MkdirAll(filepath.Dir(item.OutputBase), 0o755); err != nil {
+		return nil, err
+	}
+	var written []string
+	for _, format := range item.Formats {
+		out := item.OutputBase + "." + format
+		field, _, _ := textField(format)
+		var data []byte
+		if field == "" {
+			data = raw
+		} else if s, ok := result[field].(string); ok {
+			data = []byte(s)
+		}
+		if err := os.WriteFile(out, data, 0o644); err != nil {
+			return written, err
+		}
+		written = append(written, out)
+	}
+	return written, nil
 }
 
 func (e *Engine) convertDocument(ctx context.Context, item Item) ([]string, error) {
