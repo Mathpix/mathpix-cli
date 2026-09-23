@@ -40,9 +40,21 @@ The script detects your OS and CPU, downloads the matching release, verifies its
 `mpx` to `~/.local/bin`, and puts it on your `PATH`. Override the location with `MPX_INSTALL_DIR`; pin
 a version with `MPX_VERSION`.
 
-Prefer a package manager? `brew install mathpix/tap/mpx` or `winget install Mathpix.mpx`.
-
 `mpx` is one static binary. You do not need Python, Node, Java, or Docker.
+
+## Updating
+
+mpx keeps itself current. Run interactively, it checks for a newer release at most once every 12
+hours, downloads it in the background, and applies it on your next run. If a background update
+fails, it tells you to run `mpx update`. Update on demand any time:
+
+```bash
+mpx update
+```
+
+Auto-update is skipped in CI and non-interactive shells, and never touches a binary it cannot
+rewrite. Turn it off with `MPX_NO_UPDATE=1`, `MPX_AUTO_UPDATE=off`, or `auto_update = off` in your
+config; `mpx update` still works.
 
 ## Configuration
 
