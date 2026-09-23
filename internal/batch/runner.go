@@ -23,6 +23,7 @@ type Engine struct {
 	PollInitial time.Duration
 	PollMax     time.Duration
 	OnProgress  func(percent float64, detail string)
+	OnDocument  func(pdfID string, numPages int)
 }
 
 // NewEngine builds an Engine with sane polling defaults.
@@ -153,8 +154,12 @@ func (e *Engine) convertDocument(ctx context.Context, item Item) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	if err := e.pollDocument(ctx, id); err != nil {
-		return nil, err
+	pages, err := e.pollDocument(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("%w (pdf_id %s)", err, id)
+	}
+	if e.OnDocument != nil {
+		e.OnDocument(id, pages)
 	}
 	return e.downloadAll(ctx, item, func(ctx context.Context, ext string, w *os.File) (bool, time.Duration, error) {
 		return e.Client.Download(ctx, id, ext, w)
@@ -246,24 +251,24 @@ func (e *Engine) downloadOne(ctx context.Context, ext, out string, dl downloadFu
 	}
 }
 
-func (e *Engine) pollDocument(ctx context.Context, id string) error {
+func (e *Engine) pollDocument(ctx context.Context, id string) (int, error) {
 	delay := e.PollInitial
 	for {
 		s, err := e.Client.GetStatus(ctx, id)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if s.Status == "error" {
-			return fmt.Errorf("processing failed: %s", statusError(s))
+			return 0, fmt.Errorf("processing failed: %s", statusError(s))
 		}
 		if e.OnProgress != nil {
 			e.OnProgress(statusProgress(s))
 		}
 		if s.Terminal() {
-			return nil
+			return s.NumPages, nil
 		}
 		if err := sleepCtx(ctx, delay); err != nil {
-			return err
+			return 0, err
 		}
 		delay = nextDelay(delay, e.PollMax)
 	}
