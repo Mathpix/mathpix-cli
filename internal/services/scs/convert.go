@@ -320,7 +320,11 @@ func printConvertSummary(cmd *cobra.Command, g *cli.Global, pages int, idLabel, 
 	}
 	parts := []string{}
 	if pages > 0 {
-		parts = append(parts, fmt.Sprintf("%d pages", pages))
+		unit := "pages"
+		if pages == 1 {
+			unit = "page"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", pages, unit))
 	}
 	parts = append(parts, elapsed.Round(100*time.Millisecond).String())
 	if id != "" {
