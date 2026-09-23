@@ -164,6 +164,7 @@ func runAsyncSingle(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf
 	if cf.destination != "" {
 		options["destination_uri"] = cf.destination
 	}
+	start := time.Now()
 	ind := progress.NewIndicator(cmd.ErrOrStderr(), g.ShowProgress())
 	ind.Start("converting " + filepath.Base(src))
 	fileID, err := submitAsync(cmd, client, options, src)
@@ -171,9 +172,10 @@ func runAsyncSingle(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf
 		ind.Stop()
 		return err
 	}
-	if err := pollFile(cmd, client, fileID, ind); err != nil {
+	pages, err := pollFile(cmd, client, fileID, ind)
+	if err != nil {
 		ind.Stop()
-		return err
+		return fmt.Errorf("%w (file_id %s)", err, fileID)
 	}
 	ind.Stop()
 	out := strings.TrimSuffix(dst, "."+format)
@@ -182,6 +184,7 @@ func runAsyncSingle(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf
 		return err
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), target)
+	printConvertSummary(cmd, g, pages, "file_id", fileID, time.Since(start))
 	return nil
 }
 
@@ -214,12 +217,12 @@ func submitAsync(cmd *cobra.Command, client *scsapi.Client, options map[string]a
 	return out.FileID, nil
 }
 
-func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string, ind *progress.Indicator) error {
+func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string, ind *progress.Indicator) (int, error) {
 	delay := time.Second
 	for {
 		raw, err := client.FilesStatus(cmd.Context(), fileID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		var s struct {
 			Status           string  `json:"status"`
@@ -234,16 +237,16 @@ func pollFile(cmd *cobra.Command, client *scsapi.Client, fileID string, ind *pro
 		json.Unmarshal(raw, &s)
 		if s.Status == "error" {
 			if s.ErrorInfo != nil && s.ErrorInfo.Message != "" {
-				return fmt.Errorf("processing failed: %s", s.ErrorInfo.Message)
+				return 0, fmt.Errorf("processing failed: %s", s.ErrorInfo.Message)
 			}
-			return fmt.Errorf("processing failed: %s", s.Error)
+			return 0, fmt.Errorf("processing failed: %s", s.Error)
 		}
 		ind.Set(pollProgress(s.PercentDone, s.NumPagesComplete, s.NumPages))
 		if s.Status == "completed" {
-			return nil
+			return s.NumPages, nil
 		}
 		if err := sleepCtx(cmd.Context(), delay); err != nil {
-			return err
+			return 0, err
 		}
 		if delay < 10*time.Second {
 			delay *= 2
@@ -291,10 +294,14 @@ func runSingle(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf *con
 		Formats:    []string{format},
 		OutputBase: strings.TrimSuffix(dst, "."+format),
 	}
+	start := time.Now()
+	var pdfID string
+	var pages int
 	ind := progress.NewIndicator(cmd.ErrOrStderr(), g.ShowProgress())
 	ind.Start("converting " + item.Key)
 	engine := batch.NewEngine(client, options)
 	engine.OnProgress = ind.Set
+	engine.OnDocument = func(id string, n int) { pdfID, pages = id, n }
 	outputs, err := engine.Convert(cmd.Context(), item)
 	ind.Stop()
 	if err != nil {
@@ -303,7 +310,23 @@ func runSingle(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf *con
 	for _, o := range outputs {
 		fmt.Fprintln(cmd.OutOrStdout(), o)
 	}
+	printConvertSummary(cmd, g, pages, "pdf_id", pdfID, time.Since(start))
 	return nil
+}
+
+func printConvertSummary(cmd *cobra.Command, g *cli.Global, pages int, idLabel, id string, elapsed time.Duration) {
+	if g.Verbosity == cli.VerbosityQuiet {
+		return
+	}
+	parts := []string{}
+	if pages > 0 {
+		parts = append(parts, fmt.Sprintf("%d pages", pages))
+	}
+	parts = append(parts, elapsed.Round(100*time.Millisecond).String())
+	if id != "" {
+		parts = append(parts, idLabel+" "+id)
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "✓ %s\n", strings.Join(parts, " · "))
 }
 
 func runFolder(cmd *cobra.Command, g *cli.Global, client *scsapi.Client, cf *convertFlags, options map[string]any, srcDir, dstDir string) error {
