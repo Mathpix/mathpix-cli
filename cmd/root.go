@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mathpix/mathpix-cli/internal/cli"
+	"github.com/mathpix/mathpix-cli/internal/selfupdate"
 	"github.com/mathpix/mathpix-cli/internal/services/pco"
 	"github.com/mathpix/mathpix-cli/internal/services/scs"
 )
@@ -56,6 +57,13 @@ variables, or --app-id / --app-key.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) {
+		switch cmd.Name() {
+		case "update", "version", "configure", "help", selfupdate.WorkerName:
+			return
+		}
+		selfupdate.New(Version, os.Stderr).Trigger()
+	}
 	root.PersistentFlags().StringVar(&flags.Profile, "profile", "", "named profile to use (or MPX_PROFILE; default \"default\")")
 	root.PersistentFlags().StringVar(&flags.AppID, "app-id", "", "Mathpix app_id (or MATHPIX_APP_ID)")
 	root.PersistentFlags().StringVar(&flags.AppKey, "app-key", "", "Mathpix app_key (or MATHPIX_APP_KEY; prefer the variable over shell history)")
@@ -68,6 +76,6 @@ variables, or --app-id / --app-key.`,
 	root.AddCommand(scs.Command(flags))
 	root.AddCommand(pco.Command(flags))
 
-	root.AddCommand(newConfigureCmd(flags), newVersionCmd())
+	root.AddCommand(newConfigureCmd(flags), newVersionCmd(), newUpdateCmd(), newSelfUpdateWorkerCmd())
 	return root
 }
