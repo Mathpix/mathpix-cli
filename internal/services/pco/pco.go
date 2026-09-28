@@ -47,6 +47,7 @@ Point --endpoint at your deployment. A deployment usually needs no credentials o
 		newJobsCmd(flags, t),
 		newStatusCmd(flags, t),
 		newUsageCmd(flags, t),
+		newMigrateSCSCmd(),
 	)
 	return pco
 }
@@ -57,7 +58,18 @@ func client(cmd *cobra.Command, flags *cli.Flags, t *transport) (*cli.Global, *p
 	if err != nil {
 		return nil, nil, err
 	}
-	c, err := pcoapi.New(pcoapi.Options{
+	c, err := newClientFor(g, t)
+	if err != nil {
+		return nil, nil, err
+	}
+	return g, c, nil
+}
+
+// newClientFor builds a pcoapi client from an already-resolved Global plus the pco transport flags.
+// It is split out so a local dry run can resolve the Global (for progress) without requiring an
+// endpoint, which pcoapi.New insists on.
+func newClientFor(g *cli.Global, t *transport) (*pcoapi.Client, error) {
+	return pcoapi.New(pcoapi.Options{
 		Endpoint:   g.Endpoint,
 		AppID:      g.AppID,
 		AppKey:     g.AppKey,
@@ -67,8 +79,4 @@ func client(cmd *cobra.Command, flags *cli.Flags, t *transport) (*cli.Global, *p
 		ClientKey:  t.clientKey,
 		Insecure:   t.insecure,
 	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return g, c, nil
 }
